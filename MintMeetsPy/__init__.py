@@ -8,7 +8,8 @@ from platform import platform
 import signal
 import argparse
 from sys import stdout
-
+import html
+from urllib.error import URLError
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +143,7 @@ class Session:
         return self
 
     def get_account_data(self):
-        """This returns the list of all account info including balances"""
+        """Returns the list of all account info including balances"""
         #magic number? random number?
         request_id = "115485"  
         data = {"input": json.dumps([
@@ -169,6 +170,22 @@ class Session:
         json_data = json.loads(response)['response']
         logger.debug(json_data)
         return json_data[request_id]['response']
+
+    def get_transactions(self):
+        """Returns a list of transactions"""
+        trans_url = "https://wwws.mint.com/transaction.event"
+        try:
+            response = self.req(trans_url)
+        except URLError as ue:
+            logger.error("uh-oh, did it timeout?")
+            quit()
+        trans_node = '<input name="js-model-transactions" type="hidden" value="'
+        trans_start = response.find(trans_node)
+        trans_end = response.find('"', trans_start + len(trans_node) + 2)
+        transactions = response[trans_start + len(trans_node):trans_end]
+        payload = html.unescape(transactions)
+        logger.debug(payload)
+        return json.loads(payload)
 
 if __name__ == "__main__":
     pass

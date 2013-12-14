@@ -4,8 +4,8 @@ Created on Dec 13, 2013
 
 Simple wrapper for the MintMeetsPy module
 
-Only calls the get_account_data method on the Session object and returns
-a list of all account data
+Can call the get_account_data or the get_transactions method on the Session
+object and returns a list of all account data or transactions respectively.
 
 @author: pancho-villa
 '''
@@ -25,6 +25,10 @@ if __name__ == "__main__":
     parser.add_argument('password', metavar="PASSWORD", type=str,
                         help="""The password for your Mint.com account
                         **case-sensitive""")
+    parser.add_argument('accounts', nargs="?", default=argparse.SUPPRESS)
+    parser.add_argument('--accounts', dest="acc", default=None)
+    parser.add_argument('trans', nargs="?", default=argparse.SUPPRESS)
+    parser.add_argument('--trans', dest="trans", default=None)
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Turns on verbose logging')
 
@@ -45,4 +49,7 @@ if __name__ == "__main__":
     ch.setFormatter(formatter)
     logger.addHandler(ch)
     sesh = Session(u, p).initialize()
-    print([account['name'] for account in sesh.get_account_data()])
+    if args.acc is not None:
+        print([account['name'] for account in sesh.get_account_data()])
+    if args.trans is not None:
+        print([t for t in sesh.get_transactions()])

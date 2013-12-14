@@ -22,13 +22,14 @@ logger.addHandler(ch)
 class MoneyTest(unittest.TestCase):
 
     def setUp(self):
-        self.sesh = m(self.user, self.password, True)
+        u, p = "testuser", "12345"
+        self.sesh = m(u, p, True).initialize()
         self.js_token = "12081017IDqZDKAxJjP6eS1224QJ5R2qz0wz9EJDuUDdrA"
         with open('raw.htm') as rh:
             self.html = rh.read()
 
     def tearDown(self):
-        pass
+        del self.sesh
 
     def testlogin(self):
         self.assertIn('javascript-token', self.html.lower())
@@ -37,8 +38,13 @@ class MoneyTest(unittest.TestCase):
         extracted_token = self.sesh.get_js_token(self.html)
         self.assertEqual(self.js_token, extracted_token)
 
-    def testaccounts(self):
-        pass
+    def testget_account_data(self):
+        account_data = self.sesh.get_account_data()
+        self.assertEqual(type(account_data), list)
+
+    def testget_transactions(self):
+        transactions = self.sesh.get_transactions()
+        self.assertEqual(type(transactions), list)
 
 if __name__ == "__main__":
     unittest.main()
