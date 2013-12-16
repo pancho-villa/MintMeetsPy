@@ -10,6 +10,10 @@ import argparse
 from sys import stdout
 import html
 from urllib.error import URLError
+import configparser
+import os
+import getpass
+
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +24,60 @@ def signal_handler(signal, frame):
 
 signal.signal(signal.SIGINT, signal_handler)
 
+def confirm_pass():
+    passwd = getpass.getpass()
+    confirmed = getpass.getpass("Please enter again to confirm: ")
+    if passwd != confirmed:
+        confirm_pass()
+    else:
+        return passwd
+
 
 class Session:
     """Class to authenticate and store a cookie for authentication"""
 
-    def __init__(self, username, password, use_proxy=False,
-                 proxy_host="127.0.0.1:8888", http_debug=False):
+    def __init__(self, username=None, password=None, conf_file=None,
+             use_proxy=False, proxy_host="127.0.0.1:8888", http_debug=False):
         """On creation it will instantiate object for reuse calling mint.com
 
         Defaults to not use a proxy. If use_proxy is True, then it takes a
         proxy host but defaults to Fiddler default install settings."""
+        home = os.path.expanduser("~")
+        default_conf = os.path.join(home, "mintmeetspy.ini")
+        config = configparser.ConfigParser()
+        if conf_file is None:
+            default_
+        if username is None and password is not None:
+            self.username = input("Please enter your mint.com username: ")
+            self.password = password
+        elif username is not None and password is None:
+            self.username = username
+            self.password = confirm_pass()
+        else:
+            try:
+                config.read(conf_file)
+            except FileNotFoundError:
+                logger.warning("No default config file found!")
+                logger.info("Writing a default file to user home directory")
+                self.username = input("Please enter your mint.com username: ")
+                self.password = confirm_pass()
+                config['DEFAULT'] = {'user': self.username, 'password':
+                                     self.password}
+
+
+        try:
+            self.username = config['DEFAULT']['user']
+            self.password = config['DEFAULT']['password']
+        except KeyError as ke:
+            logger.error("No value for %s" % ke)
+            if ke == "user":
+                self.username = input("Please enter your mint.com username: ")
+            elif ke == "password":
+                self.password = confirm_pass()
+
+    
+
+            
         if http_debug:
             http.client.HTTPSConnection.debuglevel = 1
 
@@ -41,8 +89,8 @@ class Session:
         self.login_url = "https://wwws.mint.com/loginUserSubmit.xevent"
         cj = http.cookiejar.CookieJar()
         cookie_handler = urllib.request.HTTPCookieProcessor(cj)
-        self. logger = logging.getLogger(__name__ + ".Session")
-        self.logger.debug("Using: {} as cookiejar".format(cj))
+        logger = logging.getLogger(__name__ + ".Session")
+        logger.debug("Using: {} as cookiejar".format(cj))
         '''Had to add this windows specific block to handle a bug in urllib2:
         http://bugs.python.org/issue11220
         '''
