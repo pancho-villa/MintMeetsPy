@@ -21,7 +21,7 @@ def signal_handler(signal, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 
-class Session:
+class Mint:
     """Class to authenticate and store a cookie for authentication"""
 
     def __init__(self, username, password, use_proxy=False,
@@ -38,10 +38,10 @@ class Session:
         self.username = username
         ssl_context = None
         self.password = password
-        self.login_url = "https://wwws.mint.com/loginUserSubmit.xevent"
+        self.login_url = "https://wwws.mint.com/login.event"
         cj = http.cookiejar.CookieJar()
         cookie_handler = urllib.request.HTTPCookieProcessor(cj)
-        self. logger = logging.getLogger(__name__ + ".Session")
+        self. logger = logging.getLogger(__name__ + ".Mint")
         self.logger.debug("Using: {} as cookiejar".format(cj))
         '''Had to add this windows specific block to handle a bug in urllib2:
         http://bugs.python.org/issue11220
@@ -98,8 +98,8 @@ class Session:
             quit(1)
         except urllib.error.URLError as ue:
             if hasattr(ue, 'code') and hasattr(ue, 'reason'):
-                self.logger.critical("HTTP connection failed due to: %s with %s" %
-                                 ue.code, ue.reason)
+                self.logger.critical("HTTP connection failed due to: %s with %s"
+                                     % ue.code, ue.reason)
             else:
                 if hasattr(ue, 'reason'):
                     self.logger.critical("HTTP connection failed due to: %s" %
@@ -117,30 +117,29 @@ class Session:
     def login(self):
         """Logs into mint with the creds on instantiation of the session"""
         body = urllib.parse.urlencode({"username": self.username, "password":
-                                       self.password, "task": "L",
-                                       "nextPage": ""})
+                                       self.password, "task": "L"})
         return self.req(self.login_url, body)
+
+    def initialize(self):
+        """Tries to do the login for your and set all attributes"""
+        js_token = self.get_js_token(self.login())
+        self.js_token = js_token
+        return self
+
 
     def get_js_token(self, html):
         """Extracts javascript-token from the html file for reuse
-
+    
         Sets the attribute on the object so this shouldn't be called
         externally really ever, other than testing."""
+        print("it's working!")
         js_token_start = '<input id="javascript-token" name="token" ' + \
         'type="hidden" value="'
         js_token_startindex = html.find(js_token_start) + 63
         js_token_endindex = html.find('"', js_token_startindex + 1)
         js_token = html[js_token_startindex:js_token_endindex]
-        self.logger.debug(js_token)
-        self.js_token = js_token
-        return self.js_token
-
-    def initialize(self):
-        """Tries to do the login for your and set all attributes
-
-        I'm not sure if this works as expected right now, so ignore this"""
-        self.get_js_token(self.login())
-        return self
+        logger.debug(js_token)
+        return js_token
 
     def get_account_data(self):
         """Returns the list of all account info including balances"""
