@@ -6,8 +6,12 @@ Created on Dec 13, 2013
 import logging
 import unittest
 import sys
-from MintMeetsPy import Session as s
+import MintMeetsPy
 import getpass
+import os
+from argparse import ArgumentParser
+from argparse import RawDescriptionHelpFormatter
+from configparser import ConfigParser
 
 
 logger = logging.getLogger()
@@ -18,31 +22,26 @@ fmt = '%(name)s - %(asctime)s - %(module)s-%(funcName)s - %(message)s'
 formatter = logging.Formatter(fmt)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
+logger.debug("starting now!")
 
-
-def confirm_pass():
-    passwd = getpass.getpass()
-    confirmed = getpass.getpass("Please enter again to confirm: ")
-    if passwd != confirmed:
-        confirm_pass()
-    else:
-        return passwd
-
-
-class MoneyTest(unittest.TestCase):
+class MMPTest(unittest.TestCase):
 
     def setUp(self):
-        self.user = input("Please enter you Mint username: ")
-        self.password = confirm_pass()
-        self.sesh = s(self.user, self.password, True)
+        self.logger = logging.getLogger(__name__)
+        config_file = os.path.join(os.path.expanduser("~"),
+                                        ".mintconfig.ini")
+        self.config = MintMeetsPy.Configurator(conf=config_file)
+        self.mint = MintMeetsPy.Mint()
+        u, p = self.config.user, self.config.password
+        self.mint.login(u, p)
+        self.logger.debug("Logged in? {}".format(self.mint.logged_in))
 
     def tearDown(self):
-        del self.sesh
+        del self.mint
 
-    def testaccounts(self):
-        self.sesh.initialize()
-        account_data = self.sesh.get_account_data()
-        logger.debug(account_data)
+    def testdata(self):
+        print(self.mint.data)
+        
 
 if __name__ == "__main__":
     unittest.main()

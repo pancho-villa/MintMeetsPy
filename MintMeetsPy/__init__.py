@@ -8,8 +8,11 @@ from platform import platform
 import signal
 import argparse
 from sys import stdout
+import os
 import html
+import getpass
 from urllib.error import URLError
+from configparser import ConfigParser
 
 logger = logging.getLogger(__name__)
 
@@ -21,28 +24,94 @@ def signal_handler(signal, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 
+def require_login(fn):
+    def inner(self, *args, **kwargs):
+        if not self.logged_in:
+            raise ValueError("Not logged in!")
+        return fn(self, *args, **kwargs)
+    return inner
+
+
+class Configurator(ConfigParser):
+    """Reads or creates a configuration for re-use"""
+    def __init__(self, user=None, passwd=None, conf=None, write=False):
+        self.config = ConfigParser()
+        if conf is None and user is None and passwd is None:
+            self.conf_file = os.join(os.expanduser("~"), ".mintconfig.ini")
+            self.user = input("Please enter you Mint.com username: ")
+            self.password = self.confirm_pass()
+            self.config['DEFAULT'] = {'user': self.user, 'password':
+                                      self.password}
+
+        elif conf is None and user is None and passwd is not None:
+            self.password = passwd
+            self.user = input("Please enter you Mint.com username: ")
+            self.config['DEFAULT'] = {'user': self.user, 'password':
+                                      self.password}
+
+        elif conf is None and user is not None and passwd is None:
+            self.user = user
+            self.password = self.confirm_pass()
+            self.config['DEFAULT'] = {'user': self.user, 'password':
+                                      self.password}
+ 
+        else:
+            self.conf_file = conf
+            try:
+                self.config.read(self.conf_file)
+            except FileNotFoundError as fnfe:
+                logger.error("{} not found".format(conf))
+                self.user = input("Please enter you Mint.com username: ")
+                self.password = self.confirm_pass()
+            else:
+                keys = [k for k in self.config['DEFAULT'].keys()]
+                if "password" not in keys:
+                    self.password = self.confirm_pass()
+                    self.config['DEFAULT']['password'] = self.password
+                self.password = self.config['DEFAULT']['password']
+                self.user = self.config['DEFAULT']['user']
+
+    def get_creds(self):
+        return self.config['DEFAULT']['user'],
+        self.config['DEFAULT']['password']
+
+    @staticmethod
+    def confirm_pass():
+        passwd = getpass.getpass()
+        confirmed = getpass.getpass("Please enter again to confirm: ")
+        if passwd != confirmed:
+            confirm_pass()
+        else:
+            return passwd
+
+    def write_config(self):
+        with open(self.conf, 'w') as config_file:
+            self.config.write(config_file)    
+
+
 class Mint:
     """Class to authenticate and store a cookie for authentication"""
 
-    def __init__(self, username, password, use_proxy=False,
+    def __init__(self, use_proxy=False,
                  proxy_host="127.0.0.1:8888", http_debug=False):
         """On creation it will instantiate object for reuse calling mint.com
 
         Defaults to not use a proxy. If use_proxy is True, then it takes a
         proxy host but defaults to Fiddler default install settings."""
+        self.base_url = 'https://wwws.mint.com/'
+
         if http_debug:
             http.client.HTTPSConnection.debuglevel = 1
 
         proxy = urllib.request.ProxyHandler({'http': proxy_host,
                                              'https': proxy_host})
-        self.username = username
         ssl_context = None
-        self.password = password
-        self.login_url = "https://wwws.mint.com/login.event"
+#         self.login_url = self.base_url + "loginUserSubmit.xevent"
+        self.login_url = self.base_url + "login.event"
         cj = http.cookiejar.CookieJar()
         cookie_handler = urllib.request.HTTPCookieProcessor(cj)
-        self. logger = logging.getLogger(__name__ + ".Mint")
-        self.logger.debug("Using: {} as cookiejar".format(cj))
+        self.logger = logging.getLogger(__name__ + ".Mint")
+#         self.logger.debug("Using: {} as cookiejar".format(cj))
         '''Had to add this windows specific block to handle a bug in urllib2:
         http://bugs.python.org/issue11220
         '''
@@ -73,14 +142,13 @@ class Mint:
 
         hdrs = {'Accept': "*/*",
                 'Accept-Encoding': 'gzip,deflate,compress'}
+#         hdrs = {}
         if post_data is None:
+            self.logger.debug("No body found to post to URL: {}".format(url))
             req = urllib.request.Request(url, headers=hdrs)
         else:
-            if isinstance(post_data, dict):
-                self.logger.info("Coerced post_data into urlencoding")
-                pd = urllib.parse.urlencode(post_data)
-            else:
-                pd = post_data
+            pd = urllib.parse.urlencode(post_data)
+            self.logger.debug("Encoding {} for {}".format(pd, url))
             req = urllib.request.Request(url, bytes(pd, 'utf-8'),
                                          headers=hdrs)
         if heads is not None:
@@ -114,32 +182,48 @@ class Mint:
         else:
             return resp.read().decode('utf-8')
 
-    def login(self):
+    def login(self, user, passwd):
         """Logs into mint with the creds on instantiation of the session"""
-        body = urllib.parse.urlencode({"username": self.username, "password":
-                                       self.password, "task": "L"})
-        return self.req(self.login_url, body)
+        body = {"username": user, "password": passwd, "task": "L"}
+        try:
+            html = self.req(self.login_url, body)
+            self.token = self.get_token(html)
+            self.logged_in = True
+            self.logger.debug("logged in? {}".format(self.logged_in))
+        except ValueError as ve:
+            logger.error(ve)
+            raise
+        return html
 
-    def initialize(self):
-        """Tries to do the login for your and set all attributes"""
-        js_token = self.get_js_token(self.login())
-        self.js_token = js_token
-        return self
-
-
-    def get_js_token(self, html):
+    
+    def get_token(self, html):
         """Extracts javascript-token from the html file for reuse
     
         Sets the attribute on the object so this shouldn't be called
         externally really ever, other than testing."""
-        print("it's working!")
         js_token_start = '<input id="javascript-token" name="token" ' + \
         'type="hidden" value="'
         js_token_startindex = html.find(js_token_start) + 63
         js_token_endindex = html.find('"', js_token_startindex + 1)
         js_token = html[js_token_startindex:js_token_endindex]
-        logger.debug(js_token)
+        self.logger.debug(js_token)
+
         return js_token
+
+    @property
+    @require_login
+    def data(self):
+        if getattr(self, '_data', None):
+            return self._data
+        params = urllib.parse.urlencode({'task' : 'tags,categories', 'token':
+                                         self.token})
+        data_url = self.base_url + 'getJsonData.xevent' + "?" + params
+        payload = self.req(data_url)
+        response = json.loads(payload)
+        self._data = {}
+        for set in response['set']:
+            self._data[set['id']] = set['data']
+        return self._data
 
     def get_account_data(self):
         """Returns the list of all account info including balances"""

@@ -6,7 +6,7 @@ Created on Dec 12, 2013
 import logging
 import unittest
 import sys
-from MintMeetsPy import Session as m
+from MintMeetsPy import Mint as m
 
 
 logger = logging.getLogger()
